@@ -21,13 +21,27 @@ def softmax(t):
     out = np.exp(t)
     return out/np.sum(out)
 
-def sparse_cross_entropy(z,y):
+def softmax_batch(t):
+    out = np.exp(t)
+    return out/np.sum(out, axis=1, keepdims=True)
+
+def sparse_cross_entropy(z, y):
     return -np.log(z[0, y])
+
+def sparse_cross_entropy_batch(z, y):
+    return -np.log(np.array([z[j, y[j]] for j in range(len(y))]))
 
 def to_full(y, num_classes):
     y_full = np.zeros((1, num_classes))
     y_full[0, y] = 1
     return y_full
+
+def to_full_batch(y, num_classes):
+    y_full = np.zeros((len(y), num_classes))
+    for j, yj in enumerate(y):
+        y_full[j, yj] = 1
+    return y_full
+        
 
 def relu_deriv(t):
     return (t>=0).astype(float)
@@ -51,33 +65,39 @@ b2 = (b2 - 0.5) * 2 * np.sqrt(1/H_DIM)
 
 LEARNING_RATE = 0.0002
 NUM_EPOCHS = 400
+BATCH_SIZE = 50
 
 loss_arr=[]
 
 for ep in range(NUM_EPOCHS):
     random.shuffle(dataset)
-    for i in range(len(dataset)):
+    for i in range(len(dataset)//BATCH_SIZE):
         
-        x, y = dataset[i]
+        batch_x, batch_y = zip(*dataset[i*BATCH_SIZE : i*BATCH_SIZE + BATCH_SIZE])
+        x = np.concatenate(batch_x, axis=0)
+        y = np.array(batch_y)
+
         
         # Forward
         t1 = x @ W1 + b1
         h1 = relu(t1)
         t2 = h1 @ W2 + b2
-        z = softmax(t2)
+        z = softmax_batch(t2)
         #sparse - так как у не вектор распределения, а индекс правильного класса. 
-        E = sparse_cross_entropy(z, y)
+        E = np.sum(sparse_cross_entropy_batch(z, y))
         
         
         # Backward
-        y_full = to_full(y, OUT_DIM)
+        y_full = to_full_batch(y, OUT_DIM)
         dE_dt2 = z - y_full
         dE_dW2 = h1.T @ dE_dt2
-        dE_db2 = dE_dt2
+        # Без Батча dE_db2 = dE_dt2
+        dE_db2 = np.sum(dE_dt2, axis=0, keepdims=True)
         dE_dh1 = dE_dt2 @ W2.T
         dE_dt1 = dE_dh1 * relu_deriv(t1)
         dE_dW1 = x.T @ dE_dt1
-        dE_db1 = dE_dt1
+        # Без Батча dE_db1 = dE_dt1
+        dE_db1 = np.sum(dE_dt1, axis=0, keepdims=True)
         
         # Update 
         W1 = W1 - LEARNING_RATE * dE_dW1
